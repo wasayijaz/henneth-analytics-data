@@ -1,6 +1,6 @@
 # henneth-analytics-data
 
-Durable data store for the henneth.app analytics dashboard. This repo holds **data only** — no app code, no dashboard HTML. It exists so the daily refresh task never has to re-pull 30 days of history from GA4/GSC/PostHog/Supabase; it only pulls yesterday, appends it here, and trims old rows.
+Durable data store for the henneth.app analytics dashboard. This repo holds **data only** — no app code, and deliberately no dashboard HTML shell either (see "Where the dashboard HTML lives" below). It exists so the daily refresh task never has to re-pull 30 days of history from GA4/GSC/PostHog/Supabase; it only pulls yesterday, merges it in here, and trims old rows.
 
 ## Layout
 
@@ -17,17 +17,21 @@ Durable data store for the henneth.app analytics dashboard. This repo holds **da
 - `dailyGSC.json` — Search Console clicks/impressions/ctr/position per day
 - `dailyPHEvents.json` — PostHog event counts per day
 - `dailyPHHost.json` — PostHog henneth.app vs desk.henneth.app split per day
-- `users.json` — current Supabase user snapshot (id, email, signed_up, last_sign_in_at, email_confirmed_at, plan, onboarded). **Contains real customer emails.** Stored here at Wasay's explicit request (2026-07-25) — this repo is private, and git history gives a free daily-snapshot backup. Overwritten in full each run (Supabase itself is the source of truth for history, so we don't need to accumulate old snapshots — just keep the latest).
+- `users.json` — current Supabase user snapshot (see PII note below)
 - `_meta.json` — `{lastUpdated, dataMax, dataMin}` bookkeeping
+
+## users.json contains real customer emails — read before touching
+
+Stored here intentionally (Wasay's explicit call, 2026-07-25). It is a **full overwrite every run**, not an append — Supabase itself is the history source of truth; this file is just a current-state cache for the dashboard splice step, and git commit history gives a free daily point-in-time backup of it. Never paste its contents anywhere except this file and a file delivered directly to Wasay (no Slack, no chat text, no issues).
+
+## Where the dashboard HTML lives (it's NOT here)
+
+The 90KB+ shell (CSS/markup/render code) is deliberately **not** duplicated into this repo. Its durable copy is the Cowork artifact `henneth-analytics-desk` — fetch it in a live session via `device_stage_files(artifact_ids:["henneth-analytics-desk"])`. This repo stays data-only so there is exactly one canonical copy of the shell (the artifact) and exactly one canonical copy of the data (here) — never two copies that can drift out of sync.
 
 ## Retention
 
-Each day-level file keeps a rolling window (default 90 days). On every run: read the file, append yesterday's row(s), drop anything older than the window, dedupe by date (+label/path/event where applicable), write back. `users.json` is the exception — it's a full overwrite of the current Supabase snapshot, not an append.
+Day-level files keep a rolling 90-day window. On every run: read the file, merge in yesterday's row(s) deduped by natural key (date+path, date+label, date+event, etc — replace, never duplicate), drop anything older than the window, write back.
 
 ## Who writes here
 
-The "Henneth daily analytics report" scheduled task, via the connected GitHub account (Composio), once per day. Nothing else should write to this repo.
-
-## Privacy
-
-`users.json` contains real customer email addresses. This repo is private to Wasay's GitHub account. Do not fork, make public, or add collaborators without re-checking this file first.
+The "Henneth Daily Analytics Report" scheduled task, via the connected GitHub account (Composio), once per day — data only, never the dashboard HTML or the Cowork artifact (that requires a live, desktop-bridged session and cannot run headless). Nothing else should write to this repo.
